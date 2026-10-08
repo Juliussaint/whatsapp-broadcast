@@ -1,0 +1,1367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MGD Broadcaster</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* ── Design tokens ── */
+        :root {
+            --green:      #00e676;
+            --green-dim:  #00c853;
+            --green-glow: rgba(0, 230, 118, 0.18);
+            --red:        #ff4d4d;
+            --amber:      #ffc400;
+            --blue:       #448aff;
+            --bg:         #0d0d0d;
+            --surface:    #141414;
+            --surface-2:  #1c1c1c;
+            --surface-3:  #252525;
+            --border:     #2a2a2a;
+            --border-hi:  #3a3a3a;
+            --text:       #e8e8e8;
+            --text-muted: #808080;
+            --text-dim:   #4a4a4a;
+            --mono:       'DM Mono', monospace;
+            --display:    'Syne', sans-serif;
+            --body:       'DM Sans', sans-serif;
+            --radius:     10px;
+            --radius-sm:  6px;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--body);
+            font-weight: 300;
+            min-height: 100vh;
+            padding: 28px 20px 60px;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Subtle noise grain overlay */
+        body::before {
+            content: '';
+            position: fixed; inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+            pointer-events: none; z-index: 999;
+        }
+
+        /* ── Layout ── */
+        .wrapper { max-width: 960px; margin: 0 auto; }
+
+        /* ── Header ── */
+        .site-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 32px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 32px;
+        }
+        .logo-area {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .logo-img {
+            width: 44px;
+            height: 44px;
+            object-fit: contain;
+            border-radius: var(--radius-sm);
+            background: var(--surface-2);
+        }
+        .site-title {
+            font-family: var(--display);
+            font-size: 1.25rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            color: var(--text);
+            line-height: 1;
+        }
+        .site-subtitle {
+            font-family: var(--mono);
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+            letter-spacing: 0.06em;
+        }
+        .logout-btn {
+            font-family: var(--mono);
+            font-size: 0.72rem;
+            color: var(--red);
+            background: none;
+            border: 1px solid rgba(255,77,77,0.25);
+            padding: 6px 14px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            letter-spacing: 0.05em;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        .logout-btn:hover {
+            background: rgba(255,77,77,0.08);
+            border-color: rgba(255,77,77,0.5);
+        }
+
+        /* ── Cards ── */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px;
+        }
+        .card + .card { margin-top: 16px; }
+
+        .card-title {
+            font-family: var(--display);
+            font-size: 0.8rem;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 20px;
+        }
+
+        /* ── Status pill ── */
+        .status-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            padding: 6px 14px;
+            border-radius: 99px;
+            border: 1px solid;
+        }
+        .status-dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+        }
+        .pill-connected    { color: var(--green); border-color: rgba(0,230,118,0.3); background: rgba(0,230,118,0.07); }
+        .pill-scanning     { color: var(--amber); border-color: rgba(255,196,0,0.3);  background: rgba(255,196,0,0.07); }
+        .pill-reconnecting { color: var(--amber); border-color: rgba(255,196,0,0.3);  background: rgba(255,196,0,0.07); }
+        .pill-disconnected,
+        .pill-logged_out   { color: var(--red);   border-color: rgba(255,77,77,0.3);  background: rgba(255,77,77,0.07); }
+
+        .dot-connected    { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse-green 2s infinite; }
+        .dot-scanning,
+        .dot-reconnecting { background: var(--amber); animation: pulse-amber 1.2s infinite; }
+        .dot-disconnected,
+        .dot-logged_out   { background: var(--red); }
+
+        @keyframes pulse-green { 0%,100%{opacity:1} 50%{opacity:.4} }
+        @keyframes pulse-amber { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+        /* ── QR Code ── */
+        #qr-area {
+            margin-top: 20px;
+            padding: 24px;
+            background: var(--surface-2);
+            border: 1px dashed var(--border-hi);
+            border-radius: var(--radius);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 14px;
+            text-align: center;
+        }
+        #qr-area.hidden { display: none; }
+        .qr-label {
+            font-family: var(--mono);
+            font-size: 0.72rem;
+            color: var(--amber);
+            letter-spacing: 0.05em;
+        }
+        #qr-code-img {
+            width: 180px;
+            height: 180px;
+            border-radius: var(--radius-sm);
+            background: #fff;
+            padding: 10px;
+        }
+
+        /* ── Two-column grid ── */
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-top: 16px;
+        }
+        @media (max-width: 640px) { .two-col { grid-template-columns: 1fr; } }
+
+        /* ── Form elements ── */
+        label {
+            display: block;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            margin-bottom: 7px;
+            letter-spacing: 0.04em;
+        }
+        select, textarea {
+            width: 100%;
+            background: var(--surface-2);
+            color: var(--text);
+            border: 1px solid var(--border-hi);
+            border-radius: var(--radius-sm);
+            padding: 10px 12px;
+            font-family: var(--body);
+            font-size: 0.875rem;
+            font-weight: 300;
+            outline: none;
+            transition: border-color 0.15s;
+            appearance: none;
+        }
+        select:focus, textarea:focus { border-color: var(--green); }
+        textarea { resize: vertical; line-height: 1.6; }
+
+        .form-group { margin-bottom: 18px; }
+        .form-group:last-child { margin-bottom: 0; }
+
+        /* ── File input ── */
+        .file-input-wrapper {
+            position: relative;
+            background: var(--surface-2);
+            border: 1px dashed var(--border-hi);
+            border-radius: var(--radius-sm);
+            padding: 14px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            transition: border-color 0.15s, background 0.15s;
+        }
+        .file-input-wrapper:hover {
+            border-color: var(--green);
+            background: rgba(0,230,118,0.03);
+        }
+        .file-input-wrapper input[type="file"] {
+            position: absolute; inset: 0;
+            opacity: 0; width: 100%; cursor: pointer;
+        }
+        .file-input-icon {
+            font-size: 1.1rem;
+            flex-shrink: 0;
+        }
+        .file-input-text {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+        .file-input-text strong {
+            display: block;
+            color: var(--text);
+            font-weight: 500;
+            font-size: 0.82rem;
+        }
+
+        /* ── Tabs ── */
+        .tab-bar {
+            display: flex;
+            gap: 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 20px;
+        }
+        .tab-btn {
+            font-family: var(--mono);
+            font-size: 0.72rem;
+            letter-spacing: 0.06em;
+            background: none;
+            border: none;
+            padding: 10px 18px;
+            cursor: pointer;
+            color: var(--text-dim);
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .tab-btn.active {
+            color: var(--green);
+            border-bottom-color: var(--green);
+        }
+        .tab-btn:not(.active):hover { color: var(--text-muted); }
+
+        /* ── Buttons ── */
+        .btn {
+            width: 100%;
+            padding: 11px 20px;
+            border-radius: var(--radius-sm);
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            font-weight: 500;
+            letter-spacing: 0.05em;
+            border: none;
+            cursor: pointer;
+            transition: opacity 0.15s, transform 0.1s, background 0.15s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .btn:active:not(:disabled) { transform: scale(0.98); }
+        .btn:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: var(--surface-3);
+            color: var(--text);
+            border: 1px solid var(--border-hi);
+        }
+        .btn-secondary:hover:not(:disabled) { background: var(--surface-2); }
+
+        .btn-primary {
+            background: var(--green);
+            color: #000;
+        }
+        .btn-primary:hover:not(:disabled) { background: var(--green-dim); }
+
+        .btn-danger {
+            background: rgba(255,77,77,0.12);
+            color: var(--red);
+            border: 1px solid rgba(255,77,77,0.25);
+        }
+
+        /* ── Recipient counter ── */
+        .recipient-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-top: 14px;
+            margin-top: 14px;
+            border-top: 1px solid var(--border);
+        }
+        .recipient-label {
+            font-family: var(--mono);
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            letter-spacing: 0.05em;
+        }
+        .recipient-count {
+            font-family: var(--mono);
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--green);
+        }
+
+        /* ── Status message ── */
+        .status-msg {
+            margin-top: 12px;
+            font-family: var(--mono);
+            font-size: 0.75rem;
+            padding: 10px 14px;
+            border-radius: var(--radius-sm);
+            border-left: 3px solid;
+            line-height: 1.5;
+        }
+        .status-msg.hidden { display: none; }
+        .msg-info    { color: var(--text-muted); border-color: var(--text-dim);  background: var(--surface-2); }
+        .msg-success { color: var(--green);      border-color: var(--green);     background: rgba(0,230,118,0.05); }
+        .msg-error   { color: var(--red);        border-color: var(--red);       background: rgba(255,77,77,0.05); }
+        .msg-warn    { color: var(--amber);      border-color: var(--amber);     background: rgba(255,196,0,0.05); }
+
+        /* ── Progress bar ── */
+        .progress-wrap {
+            margin-top: 14px;
+            display: none;
+        }
+        .progress-wrap.visible { display: block; }
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 7px;
+            font-family: var(--mono);
+            font-size: 0.7rem;
+            color: var(--text-muted);
+        }
+        .progress-track {
+            height: 3px;
+            background: var(--surface-3);
+            border-radius: 99px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: var(--green);
+            border-radius: 99px;
+            transition: width 0.4s ease;
+            box-shadow: 0 0 8px var(--green-glow);
+        }
+        .progress-stats {
+            display: flex;
+            gap: 16px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+        .progress-stat {
+            font-family: var(--mono);
+            font-size: 0.68rem;
+            color: var(--text-muted);
+        }
+        .progress-stat span { font-weight: 500; }
+        .progress-stat .s-sent    { color: var(--green); }
+        .progress-stat .s-failed  { color: var(--red); }
+        .progress-stat .s-skipped { color: var(--blue); }
+
+        /* ── Report card ── */
+        #report-card { display: none; }
+        #report-card.visible { display: block; }
+
+        .report-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .report-stat {
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 14px;
+        }
+        .report-stat-label {
+            font-family: var(--mono);
+            font-size: 0.62rem;
+            letter-spacing: 0.08em;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+        .report-stat-value {
+            font-family: var(--display);
+            font-size: 1.5rem;
+            font-weight: 700;
+            line-height: 1;
+        }
+        .report-id {
+            font-family: var(--mono);
+            font-size: 0.68rem;
+            color: var(--text-dim);
+            margin-bottom: 16px;
+        }
+
+        .report-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .btn-download {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 18px;
+            background: var(--green);
+            color: #000;
+            border-radius: var(--radius-sm);
+            font-family: var(--mono);
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-decoration: none;
+            letter-spacing: 0.04em;
+            transition: background 0.15s;
+            cursor: pointer;
+            border: none;
+        }
+        .btn-download:hover { background: var(--green-dim); }
+
+        .btn-new-broadcast {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 18px;
+            background: var(--surface-3);
+            color: var(--text);
+            border: 1px solid var(--border-hi);
+            border-radius: var(--radius-sm);
+            font-family: var(--mono);
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .btn-new-broadcast:hover { background: var(--surface-2); }
+
+        /* ── Log viewer ── */
+        #log-container {
+            height: 280px;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            overflow-y: auto;
+            padding: 14px;
+            font-family: var(--mono);
+            font-size: 0.72rem;
+            line-height: 1.7;
+            color: var(--text-muted);
+            scroll-behavior: smooth;
+        }
+        .log-line { display: block; }
+        .log-line-info    { color: #666; }
+        .log-line-success { color: var(--green); }
+        .log-line-error   { color: var(--red); }
+        .log-line-warn    { color: var(--amber); }
+        .log-line-baileys { color: var(--blue); }
+        .log-line-queue   { color: #a78bfa; }
+        .log-line-debug   { color: #3a3a3a; }
+
+        .log-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+        .log-clear-btn {
+            font-family: var(--mono);
+            font-size: 0.65rem;
+            color: var(--text-dim);
+            background: none;
+            border: 1px solid var(--border);
+            padding: 3px 10px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            letter-spacing: 0.04em;
+            transition: color 0.15s;
+        }
+        .log-clear-btn:hover { color: var(--text-muted); }
+
+        /* ── Scrollbar ── */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 99px; }
+
+        /* ── Divider ── */
+        .divider {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 24px 0;
+        }
+
+        /* ── Fade-in animation ── */
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(12px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .card { animation: fadeUp 0.35s ease both; }
+        .card:nth-child(2) { animation-delay: 0.05s; }
+        .card:nth-child(3) { animation-delay: 0.10s; }
+        .card:nth-child(4) { animation-delay: 0.15s; }
+        .card:nth-child(5) { animation-delay: 0.20s; }
+
+        /* ── Confirm modal ── */
+        .modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.75);
+            backdrop-filter: blur(4px);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 100;
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.2s;
+        }
+        .modal-overlay.visible { opacity: 1; pointer-events: all; }
+        .modal {
+            background: var(--surface);
+            border: 1px solid var(--border-hi);
+            border-radius: var(--radius);
+            padding: 28px;
+            max-width: 380px;
+            width: 90%;
+            transform: translateY(10px);
+            transition: transform 0.2s;
+        }
+        .modal-overlay.visible .modal { transform: translateY(0); }
+        .modal-title {
+            font-family: var(--display);
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        .modal-body {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            line-height: 1.6;
+            margin-bottom: 22px;
+        }
+        .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+        .modal-cancel {
+            font-family: var(--mono);
+            font-size: 0.75rem;
+            padding: 8px 16px;
+            background: none;
+            border: 1px solid var(--border-hi);
+            color: var(--text-muted);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+        }
+        .modal-confirm {
+            font-family: var(--mono);
+            font-size: 0.75rem;
+            padding: 8px 16px;
+            background: var(--green);
+            color: #000;
+            border: none;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .modal-confirm.danger { background: var(--red); color: #fff; }
+    </style>
+</head>
+<body>
+<div class="wrapper">
+
+    <!-- ── Header ── -->
+    <header class="site-header">
+        <div class="logo-area">
+            <img
+                src="/img/primary-logo-mgd.png"
+                alt="Mega Genius Digital"
+                class="logo-img"
+                onerror="this.onerror=null; this.src='https://placehold.co/44x44/1c1c1c/808080?text=MGD'"
+            >
+            <div>
+                <div class="site-title">MGD Broadcaster</div>
+                <div class="site-subtitle">MEGA GENIUS DIGITAL</div>
+            </div>
+        </div>
+        <button id="logout-btn" class="logout-btn">⏏ LOGOUT</button>
+    </header>
+
+    <!-- ── Connection Status ── -->
+    <div class="card">
+        <div class="card-title">Connection</div>
+        <div class="status-row">
+            <div id="status-pill" class="status-pill pill-disconnected">
+                <span id="status-dot" class="status-dot dot-disconnected"></span>
+                <span id="status-text">DISCONNECTED</span>
+            </div>
+            <span id="reconnect-hint" class="hidden" style="font-family:var(--mono);font-size:0.7rem;color:var(--amber);">
+                Reconnecting…
+            </span>
+        </div>
+
+        <!-- QR Code -->
+        <div id="qr-area" class="hidden">
+            <span class="qr-label">SCAN WITH WHATSAPP → LINKED DEVICES → LINK A DEVICE</span>
+            <img id="qr-code-img" alt="WhatsApp QR Code">
+            <span style="font-size:0.72rem;color:var(--text-dim);font-family:var(--mono);">
+                QR code refreshes automatically if it expires.
+            </span>
+        </div>
+    </div>
+
+    <!-- ── Main Grid ── -->
+    <div class="two-col">
+
+        <!-- Left: Audience Setup -->
+        <div class="card">
+            <div class="card-title">Target Audience</div>
+
+            <div class="form-group">
+                <label for="country-code-select">Country Code</label>
+                <select id="country-code-select">
+                    <option value="" disabled selected>Select country…</option>
+                    <option value="62">🇮🇩 Indonesia (+62)</option>
+                    <option value="60">🇲🇾 Malaysia (+60)</option>
+                    <option value="65">🇸🇬 Singapore (+65)</option>
+                    <option value="61">🇦🇺 Australia (+61)</option>
+                    <option value="1">🇺🇸/🇨🇦 USA / Canada (+1)</option>
+                    <option value="44">🇬🇧 United Kingdom (+44)</option>
+                    <option value="91">🇮🇳 India (+91)</option>
+                    <option value="55">🇧🇷 Brazil (+55)</option>
+                    <option value="49">🇩🇪 Germany (+49)</option>
+                    <option value="33">🇫🇷 France (+33)</option>
+                    <option value="81">🇯🇵 Japan (+81)</option>
+                    <option value="82">🇰🇷 South Korea (+82)</option>
+                </select>
+            </div>
+
+            <!-- Tabs -->
+            <div class="tab-bar">
+                <button id="tab-upload" class="tab-btn active">EXCEL UPLOAD</button>
+                <button id="tab-manual" class="tab-btn">MANUAL LIST</button>
+            </div>
+
+            <!-- Excel Upload -->
+            <div id="content-upload">
+                <div class="form-group">
+                    <label>Contacts File (.xlsx)</label>
+                    <div class="file-input-wrapper">
+                        <span class="file-input-icon">📋</span>
+                        <div class="file-input-text">
+                            <strong id="contacts-file-label">Choose Excel file…</strong>
+                            Requires "Name" + "Number" columns
+                        </div>
+                        <input type="file" id="contacts-file-input" accept=".xlsx" aria-label="Upload contacts Excel file">
+                    </div>
+                </div>
+                <button id="upload-btn" class="btn btn-secondary" disabled>
+                    ↑ Process &amp; Load Contacts
+                </button>
+                <p id="upload-status" class="status-msg hidden msg-info"></p>
+            </div>
+
+            <!-- Manual List -->
+            <div id="content-manual" class="hidden">
+                <div class="form-group">
+                    <label for="manual-contacts">Phone Numbers (one per line)</label>
+                    <textarea id="manual-contacts" rows="6"
+                        placeholder="62812345678&#10;60198765432&#10;65987654321"
+                        aria-label="Manual phone number list"></textarea>
+                </div>
+            </div>
+
+            <div class="recipient-bar">
+                <span class="recipient-label">LOADED RECIPIENTS</span>
+                <span id="recipient-count" class="recipient-count">0</span>
+            </div>
+        </div>
+
+        <!-- Right: Message & Send -->
+        <div class="card">
+            <div class="card-title">Message &amp; Media</div>
+
+            <div class="form-group">
+                <label>Media Attachment (optional)</label>
+                <div class="file-input-wrapper">
+                    <span class="file-input-icon">🖼</span>
+                    <div class="file-input-text">
+                        <strong id="media-file-label">No file selected</strong>
+                        Images or videos accepted
+                    </div>
+                    <input type="file" id="media-file-input" accept="image/*,video/*" aria-label="Upload media attachment">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="message-content">
+                    Message Content
+                    <span style="color:var(--text-dim);margin-left:6px;">— use {name} for personalisation</span>
+                </label>
+                <textarea id="message-content" rows="7"
+                    placeholder="Hello {name}, here's your personalised message…"
+                    aria-label="Broadcast message content"></textarea>
+            </div>
+
+            <button id="broadcast-btn" class="btn btn-primary" disabled aria-label="Start broadcast">
+                🚀 Start Broadcast
+            </button>
+
+            <!-- Progress -->
+            <div class="progress-wrap" id="progress-wrap" aria-live="polite">
+                <div class="progress-header">
+                    <span id="progress-label">Broadcasting…</span>
+                    <span id="progress-pct">0%</span>
+                </div>
+                <div class="progress-track">
+                    <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+                </div>
+                <div class="progress-stats">
+                    <span class="progress-stat">✅ Sent: <span class="s-sent" id="prog-sent">0</span></span>
+                    <span class="progress-stat">❌ Failed: <span class="s-failed" id="prog-failed">0</span></span>
+                    <span class="progress-stat">⏭ Skipped: <span class="s-skipped" id="prog-skipped">0</span></span>
+                </div>
+            </div>
+
+            <p id="broadcast-feedback" class="status-msg hidden msg-info" aria-live="polite"></p>
+        </div>
+    </div>
+
+    <!-- ── Report Card ── -->
+    <div class="card" id="report-card" aria-live="polite">
+        <div class="card-title">Broadcast Report</div>
+        <div class="report-id" id="report-id-display"></div>
+
+        <div class="report-grid">
+            <div class="report-stat">
+                <div class="report-stat-label">Total</div>
+                <div class="report-stat-value" id="stat-total">—</div>
+            </div>
+            <div class="report-stat">
+                <div class="report-stat-label" style="color:var(--green)">Sent ✅</div>
+                <div class="report-stat-value" id="stat-success" style="color:var(--green)">—</div>
+            </div>
+            <div class="report-stat">
+                <div class="report-stat-label" style="color:var(--red)">Failed ❌</div>
+                <div class="report-stat-value" id="stat-failed" style="color:var(--red)">—</div>
+            </div>
+            <div class="report-stat">
+                <div class="report-stat-label" style="color:var(--blue)">Skipped ⏭</div>
+                <div class="report-stat-value" id="stat-skipped" style="color:var(--blue)">—</div>
+            </div>
+            <div class="report-stat">
+                <div class="report-stat-label">Duration</div>
+                <div class="report-stat-value" id="stat-duration" style="font-size:1rem;padding-top:4px;">—</div>
+            </div>
+        </div>
+
+        <div class="report-actions">
+            <a id="download-report-link" class="btn-download" href="#" download>
+                ↓ Download CSV
+            </a>
+            <button id="new-broadcast-btn" class="btn-new-broadcast">
+                ＋ New Broadcast
+            </button>
+        </div>
+    </div>
+
+    <!-- ── Live Log ── -->
+    <div class="card">
+        <div class="log-header">
+            <div class="card-title" style="margin:0">Live Log</div>
+            <button id="log-clear-btn" class="log-clear-btn">CLEAR</button>
+        </div>
+        <div id="log-container" role="log" aria-label="Live broadcast log" aria-live="polite">
+            <pre class="log-line log-line-info">Waiting for server…</pre>
+        </div>
+    </div>
+
+</div>
+
+<!-- ── Confirm Modal ── -->
+<div class="modal-overlay" id="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal">
+        <div class="modal-title" id="modal-title">Confirm</div>
+        <div class="modal-body" id="modal-body">Are you sure?</div>
+        <div class="modal-actions">
+            <button class="modal-cancel" id="modal-cancel">Cancel</button>
+            <button class="modal-confirm" id="modal-confirm">Confirm</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+const API = window.location.origin;
+
+// ── State ──────────────────────────────────────────────────────────
+let recipients         = [];
+let activeTab          = 'upload';
+let currentStatus      = 'DISCONNECTED';
+let isBroadcastActive  = false;
+let currentBroadcastID = null;
+let reportCheckInterval = null;
+let reportCheckFailures = 0;
+
+// ── DOM refs ───────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+
+const statusPill        = $('status-pill');
+const statusDot         = $('status-dot');
+const statusText        = $('status-text');
+const reconnectHint     = $('reconnect-hint');
+const qrAreaEl          = $('qr-area');
+const qrImgEl           = $('qr-code-img');
+
+const countryCodeSelect = $('country-code-select');
+const tabUploadBtn      = $('tab-upload');
+const tabManualBtn      = $('tab-manual');
+const contentUploadEl   = $('content-upload');
+const contentManualEl   = $('content-manual');
+
+const contactsFileInput = $('contacts-file-input');
+const contactsFileLabel = $('contacts-file-label');
+const uploadBtn         = $('upload-btn');
+const uploadStatusEl    = $('upload-status');
+
+const mediaFileInput    = $('media-file-input');
+const mediaFileLabel    = $('media-file-label');
+const manualInput       = $('manual-contacts');
+const recipientCountEl  = $('recipient-count');
+
+const messageContentEl  = $('message-content');
+const broadcastBtn      = $('broadcast-btn');
+const broadcastFeedback = $('broadcast-feedback');
+
+const progressWrap      = $('progress-wrap');
+const progressFill      = $('progress-fill');
+const progressLabel     = $('progress-label');
+const progressPct       = $('progress-pct');
+const progSent          = $('prog-sent');
+const progFailed        = $('prog-failed');
+const progSkipped       = $('prog-skipped');
+
+const reportCardEl      = $('report-card');
+const reportIdDisplay   = $('report-id-display');
+const statTotal         = $('stat-total');
+const statSuccess       = $('stat-success');
+const statFailed        = $('stat-failed');
+const statSkipped       = $('stat-skipped');
+const statDuration      = $('stat-duration');
+const downloadLink      = $('download-report-link');
+const newBroadcastBtn   = $('new-broadcast-btn');
+
+const logContainer      = $('log-container');
+const logClearBtn       = $('log-clear-btn');
+const logoutBtn         = $('logout-btn');
+
+const modalOverlay      = $('modal-overlay');
+const modalTitle        = $('modal-title');
+const modalBody         = $('modal-body');
+const modalCancel       = $('modal-cancel');
+const modalConfirm      = $('modal-confirm');
+
+// ── Modal helper ────────────────────────────────────────────────────
+function showModal({ title, body, confirmLabel = 'Confirm', danger = false }) {
+    return new Promise(resolve => {
+        modalTitle.textContent = title;
+        modalBody.textContent  = body;
+        modalConfirm.textContent = confirmLabel;
+        modalConfirm.className = danger ? 'modal-confirm danger' : 'modal-confirm';
+        modalOverlay.classList.add('visible');
+
+        const cleanup = result => {
+            modalOverlay.classList.remove('visible');
+            modalConfirm.replaceWith(modalConfirm.cloneNode(true));
+            modalCancel.replaceWith(modalCancel.cloneNode(true));
+            // re-cache after clone
+            const newConfirm = $('modal-confirm');
+            const newCancel  = $('modal-cancel');
+            newConfirm.addEventListener('click', () => showModal); // re-attaches below
+            resolve(result);
+        };
+
+        $('modal-confirm').addEventListener('click', () => {
+            modalOverlay.classList.remove('visible');
+            resolve(true);
+        }, { once: true });
+
+        $('modal-cancel').addEventListener('click', () => {
+            modalOverlay.classList.remove('visible');
+            resolve(false);
+        }, { once: true });
+    });
+}
+
+// ── Status display ──────────────────────────────────────────────────
+const STATUS_MAP = {
+    CONNECTED    : { pillClass: 'pill-connected',    dotClass: 'dot-connected',    label: 'CONNECTED' },
+    SCANNING_QR  : { pillClass: 'pill-scanning',     dotClass: 'dot-scanning',     label: 'SCAN QR CODE' },
+    RECONNECTING : { pillClass: 'pill-reconnecting', dotClass: 'dot-reconnecting', label: 'RECONNECTING' },
+    DISCONNECTED : { pillClass: 'pill-disconnected', dotClass: 'dot-disconnected', label: 'DISCONNECTED' },
+    LOGGED_OUT   : { pillClass: 'pill-logged_out',   dotClass: 'dot-logged_out',   label: 'LOGGED OUT' },
+};
+
+function updateStatusDisplay(status) {
+    currentStatus   = status;
+    const cfg       = STATUS_MAP[status] || STATUS_MAP.DISCONNECTED;
+
+    statusPill.className = `status-pill ${cfg.pillClass}`;
+    statusDot.className  = `status-dot  ${cfg.dotClass}`;
+    statusText.textContent = cfg.label;
+
+    qrAreaEl.classList.toggle('hidden', status !== 'SCANNING_QR');
+    reconnectHint.classList.toggle('hidden', status !== 'RECONNECTING');
+
+    refreshBroadcastBtn();
+    refreshUploadBtn();
+}
+
+// ── Fetch helper (with server-error passthrough) ─────────────────────
+async function apiFetch(url, options = {}, retries = 3) {
+    let lastError;
+    for (let i = 0; i < retries; i++) {
+        try {
+            const res = await fetch(url, options);
+            if (!res.ok) {
+                // Try to surface the server's own error message
+                let serverMsg = `HTTP ${res.status}`;
+                try {
+                    const errBody = await res.clone().json();
+                    if (errBody.error) serverMsg = errBody.error;
+                } catch {}
+                throw new Error(serverMsg);
+            }
+            return res;
+        } catch (err) {
+            lastError = err;
+            if (i < retries - 1) {
+                await new Promise(r => setTimeout(r, 2000 * (i + 1)));
+            }
+        }
+    }
+    throw lastError;
+}
+
+// ── Feedback message ────────────────────────────────────────────────
+function showFeedback(el, text, type = 'info') {
+    el.textContent  = text;
+    el.className    = `status-msg msg-${type}`;
+    el.classList.remove('hidden');
+}
+function hideFeedback(el) { el.classList.add('hidden'); }
+
+// ── Button state helpers ────────────────────────────────────────────
+function refreshBroadcastBtn() {
+    const count   = getRecipientCount();
+    const hasMsg  = messageContentEl.value.trim().length > 0 || mediaFileInput.files.length > 0;
+    const ready   = currentStatus === 'CONNECTED' && count > 0 && hasMsg && !isBroadcastActive;
+    broadcastBtn.disabled = !ready;
+}
+
+function refreshUploadBtn() {
+    uploadBtn.disabled = currentStatus !== 'CONNECTED'
+        || contactsFileInput.files.length === 0
+        || !countryCodeSelect.value;
+}
+
+function getRecipientCount() {
+    if (activeTab === 'upload') return recipients.length;
+    return manualInput.value.split('\n').filter(l => l.trim()).length;
+}
+
+function updateRecipientCounter() {
+    const n = getRecipientCount();
+    recipientCountEl.textContent = n;
+    refreshBroadcastBtn();
+}
+
+// ── Status polling (fallback heartbeat) ─────────────────────────────
+async function fetchStatus() {
+    try {
+        const res  = await apiFetch(`${API}/api/status`, {}, 1);
+        const data = await res.json();
+        updateStatusDisplay(data.status);
+        if (data.qrCode) {
+            qrImgEl.src = `data:image/png;base64,${data.qrCode}`;
+        }
+    } catch {
+        updateStatusDisplay('DISCONNECTED');
+    }
+}
+
+// ── Excel upload ────────────────────────────────────────────────────
+async function handleFileUpload() {
+    const file        = contactsFileInput.files[0];
+    const countryCode = countryCodeSelect.value;
+
+    if (!file)        return showFeedback(uploadStatusEl, 'Please select an Excel file.', 'error');
+    if (!countryCode) return showFeedback(uploadStatusEl, 'Please select a country code first.', 'error');
+
+    uploadBtn.disabled = true;
+    showFeedback(uploadStatusEl, 'Processing file…', 'warn');
+
+    const form = new FormData();
+    form.append('contacts-file', file);
+    form.append('countryCode',   countryCode);
+
+    try {
+        const res  = await apiFetch(`${API}/api/upload-contacts`, { method: 'POST', body: form });
+        const data = await res.json();
+
+        if (data.success) {
+            recipients = data.recipients;
+            updateRecipientCounter();
+            showFeedback(uploadStatusEl, `✅ ${data.message}`, 'success');
+        } else {
+            throw new Error(data.error || 'Unknown error');
+        }
+    } catch (err) {
+        recipients = [];
+        updateRecipientCounter();
+        showFeedback(uploadStatusEl, `Error: ${err.message}`, 'error');
+    } finally {
+        refreshUploadBtn();
+    }
+}
+
+// ── Progress display ─────────────────────────────────────────────────
+function showProgress(summary) {
+    const processed = (summary.success || 0) + (summary.failed || 0) + (summary.skipped || 0);
+    const total     = summary.total || 1;
+    const pct       = Math.min(100, Math.round((processed / total) * 100));
+
+    progressWrap.classList.add('visible');
+    progressFill.style.width = `${pct}%`;
+    progressPct.textContent  = `${pct}%`;
+    progressLabel.textContent = `Broadcasting… ${processed} / ${total}`;
+    progSent.textContent    = summary.success  || 0;
+    progFailed.textContent  = summary.failed   || 0;
+    progSkipped.textContent = summary.skipped  || 0;
+}
+
+function hideProgress() {
+    progressWrap.classList.remove('visible');
+    progressFill.style.width = '0%';
+}
+
+// ── Report card ──────────────────────────────────────────────────────
+function showReportCard(summary, reportID) {
+    reportCardEl.classList.add('visible');
+    reportIdDisplay.textContent = `Report ID: ${reportID}`;
+    statTotal.textContent    = summary.total;
+    statSuccess.textContent  = summary.success;
+    statFailed.textContent   = summary.failed;
+    statSkipped.textContent  = summary.skipped;
+    statDuration.textContent = summary.time;
+    downloadLink.href        = `${API}/api/report/download?id=${reportID}`;
+}
+
+function hideReportCard() {
+    reportCardEl.classList.remove('visible');
+}
+
+// ── Broadcast lifecycle ──────────────────────────────────────────────
+
+function setBroadcastActive(active) {
+    isBroadcastActive     = active;
+    broadcastBtn.disabled = active;
+    window.onbeforeunload = active
+        ? () => 'Broadcast is in progress. Leave anyway?'
+        : null;
+}
+
+// Polling — checks /api/report/:id every 3s
+async function checkReportStatus() {
+    if (!currentBroadcastID) return;
+
+    try {
+        const res  = await fetch(`${API}/api/report/${currentBroadcastID}`);
+        const data = await res.json();
+        reportCheckFailures = 0;
+
+        if (data.success && data.summary) {
+            showProgress(data.summary);
+        }
+
+        if (data.success && data.status === 'COMPLETE') {
+            clearInterval(reportCheckInterval);
+            reportCheckInterval = null;
+            setBroadcastActive(false);
+            hideProgress();
+            showReportCard(data.summary, currentBroadcastID);
+            hideFeedback(broadcastFeedback);
+        }
+    } catch {
+        reportCheckFailures++;
+        if (reportCheckFailures >= 5) {
+            clearInterval(reportCheckInterval);
+            reportCheckInterval = null;
+            setBroadcastActive(false);
+            hideProgress();
+            showFeedback(broadcastFeedback,
+                'Lost contact with server while tracking broadcast. Check logs for status.',
+                'error'
+            );
+        }
+    }
+}
+
+async function startBroadcast() {
+    const message     = messageContentEl.value.trim();
+    const mediaFile   = mediaFileInput.files[0];
+    const countryCode = countryCodeSelect.value;
+    const count       = getRecipientCount();
+
+    // Validation
+    if (!message && !mediaFile) return showFeedback(broadcastFeedback, 'Provide a message or media file.', 'error');
+    if (!countryCode)           return showFeedback(broadcastFeedback, 'Select a country code.', 'error');
+    if (count === 0)            return showFeedback(broadcastFeedback, 'No recipients loaded.', 'error');
+
+    // Confirm if large batch
+    if (count > 100) {
+        const ok = await showModal({
+            title        : 'Large Broadcast',
+            body         : `You are about to send to ${count} contacts. This may take a long time. Continue?`,
+            confirmLabel : `Send to ${count} contacts`,
+        });
+        if (!ok) return;
+    }
+
+    // Build form
+    const form = new FormData();
+    form.append('message',     message);
+    form.append('countryCode', countryCode);
+
+    if (activeTab === 'upload' && recipients.length > 0) {
+        form.append('recipients', JSON.stringify(recipients));
+    } else {
+        const raw = manualInput.value.trim();
+        if (!raw) return showFeedback(broadcastFeedback, 'Manual list is empty.', 'error');
+        form.append('contacts', raw);
+    }
+
+    if (mediaFile) form.append('media-file', mediaFile);
+
+    // Lock UI
+    setBroadcastActive(true);
+    hideReportCard();
+    hideFeedback(uploadStatusEl);
+    showFeedback(broadcastFeedback, `Queuing broadcast to ${count} contact(s)…`, 'warn');
+    reportCheckFailures = 0;
+
+    try {
+        const res  = await apiFetch(`${API}/api/broadcast`, { method: 'POST', body: form });
+        const data = await res.json();
+
+        if (data.success) {
+            currentBroadcastID  = data.broadcastID;
+            showFeedback(broadcastFeedback, `${data.message} (ID: ${data.broadcastID})`, 'info');
+            reportCheckInterval = setInterval(checkReportStatus, 3000);
+        } else {
+            throw new Error(data.error || 'Unknown error');
+        }
+    } catch (err) {
+        setBroadcastActive(false);
+        hideProgress();
+        showFeedback(broadcastFeedback, `Failed to start: ${err.message}`, 'error');
+    }
+}
+
+// ── "New Broadcast" button ───────────────────────────────────────────
+function resetForNewBroadcast() {
+    messageContentEl.value = '';
+    mediaFileInput.value   = '';
+    mediaFileLabel.textContent = 'No file selected';
+    hideFeedback(broadcastFeedback);
+    hideReportCard();
+    hideProgress();
+    updateRecipientCounter();
+}
+
+// ── Logout ───────────────────────────────────────────────────────────
+async function handleLogout() {
+    const ok = await showModal({
+        title        : 'Logout',
+        body         : 'This will disconnect your WhatsApp session and clear the local session files.',
+        confirmLabel : 'Log Out',
+        danger       : true,
+    });
+    if (!ok) return;
+
+    window.onbeforeunload = null;
+    if (reportCheckInterval) { clearInterval(reportCheckInterval); reportCheckInterval = null; }
+    setBroadcastActive(false);
+    recipients = [];
+    updateRecipientCounter();
+    updateStatusDisplay('LOGGED_OUT');
+
+    try {
+        await apiFetch(`${API}/api/logout`, { method: 'POST' }, 2);
+        showFeedback(uploadStatusEl, 'Logged out. Waiting for reconnect…', 'info');
+    } catch (err) {
+        showFeedback(uploadStatusEl, `Logout error: ${err.message}`, 'error');
+    }
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────
+function setActiveTab(tab) {
+    activeTab = tab;
+    const isUpload = tab === 'upload';
+
+    tabUploadBtn.classList.toggle('active', isUpload);
+    tabManualBtn.classList.toggle('active', !isUpload);
+    contentUploadEl.classList.toggle('hidden', !isUpload);
+    contentManualEl.classList.toggle('hidden', isUpload);
+
+    updateRecipientCounter();
+}
+
+// ── Log viewer ────────────────────────────────────────────────────────
+const MAX_LOG_LINES = 400;
+
+function appendLog(message, level = 'info') {
+    const pre = document.createElement('pre');
+    pre.className = `log-line log-line-${level.toLowerCase()}`;
+    pre.textContent = message;
+    logContainer.appendChild(pre);
+
+    // Trim oldest lines if needed
+    while (logContainer.children.length > MAX_LOG_LINES) {
+        logContainer.removeChild(logContainer.firstChild);
+    }
+
+    logContainer.scrollTop = logContainer.scrollHeight;
+}
+
+// ── SSE log stream ────────────────────────────────────────────────────
+function setupLogStream() {
+    const es = new EventSource(`${API}/api/logs`);
+
+    es.onmessage = evt => {
+        try {
+            const entry = JSON.parse(evt.data);
+            if (entry.message && entry.level) {
+                appendLog(entry.message, entry.level);
+            }
+            // React to QR-ready signal from server
+            if (entry.message && entry.message.includes('QR Code Baru Dihasilkan')) {
+                fetchStatus();
+            }
+        } catch {
+            appendLog(evt.data, 'debug');
+        }
+    };
+
+    es.onerror = () => {
+        es.close();
+        appendLog('[Stream] Connection lost. Reconnecting in 5s…', 'warn');
+        setTimeout(setupLogStream, 5000);
+    };
+}
+
+// ── Event listeners ───────────────────────────────────────────────────
+function setupListeners() {
+    // Tabs
+    tabUploadBtn.addEventListener('click', () => setActiveTab('upload'));
+    tabManualBtn.addEventListener('click', () => setActiveTab('manual'));
+
+    // Country code change → refresh upload button
+    countryCodeSelect.addEventListener('change', () => {
+        refreshUploadBtn();
+        refreshBroadcastBtn();
+    });
+
+    // File inputs
+    contactsFileInput.addEventListener('change', () => {
+        const file = contactsFileInput.files[0];
+        contactsFileLabel.textContent = file ? file.name : 'Choose Excel file…';
+        refreshUploadBtn();
+    });
+
+    mediaFileInput.addEventListener('change', () => {
+        const file = mediaFileInput.files[0];
+        mediaFileLabel.textContent = file ? file.name : 'No file selected';
+        refreshBroadcastBtn();
+    });
+
+    // Textarea live updates
+    messageContentEl.addEventListener('input', refreshBroadcastBtn);
+    manualInput.addEventListener('input', updateRecipientCounter);
+
+    // Actions
+    uploadBtn.addEventListener('click', handleFileUpload);
+    broadcastBtn.addEventListener('click', startBroadcast);
+    logoutBtn.addEventListener('click', handleLogout);
+    newBroadcastBtn.addEventListener('click', resetForNewBroadcast);
+    logClearBtn.addEventListener('click', () => { logContainer.innerHTML = ''; });
+
+    // Download link — prevent navigation when no report exists
+    downloadLink.addEventListener('click', e => {
+        if (downloadLink.href === '#' || downloadLink.href.endsWith('#')) e.preventDefault();
+    });
+}
+
+// ── Init ──────────────────────────────────────────────────────────────
+window.onload = () => {
+    setupListeners();
+    fetchStatus();
+    // Slow heartbeat — SSE handles real-time updates
+    setInterval(fetchStatus, 15_000);
+    setupLogStream();
+};
+</script>
+</body>
+</html>
